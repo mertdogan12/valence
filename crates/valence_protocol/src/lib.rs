@@ -78,12 +78,12 @@ pub use {
 /// The maximum number of bytes in a single Minecraft packet.
 pub const MAX_PACKET_SIZE: i32 = 2097152;
 
-/// The Minecraft protocol version this library currently targets.
-pub const PROTOCOL_VERSION: i32 = 763;
+/// The Minecraft protocol versions this library currently supports.
+pub const PROTOCOL_VERSIONS: [i32; 2] = [763, 5];
 
 /// The stringified name of the Minecraft version this library currently
 /// targets.
-pub const MINECRAFT_VERSION: &str = "1.20.1";
+pub const MINECRAFT_VERSION: &str = "1.7.10, 1.20.1";
 
 /// How large a packet should be before it is compressed by the packet encoder.
 ///
@@ -275,6 +275,18 @@ pub trait Packet: std::fmt::Debug {
             .context("failed to encode packet ID")?;
 
         self.encode(w)
+    }
+}
+
+pub struct ProtocolVersion;
+
+impl ProtocolVersion {
+    pub fn get_version(client_version: i32) -> i32 {
+        if PROTOCOL_VERSIONS.contains(&client_version) {
+            client_version
+        } else {
+            PROTOCOL_VERSIONS[0]
+        }
     }
 }
 

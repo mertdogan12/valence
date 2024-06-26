@@ -16,6 +16,7 @@ pub mod login {
     pub use login_disconnect_s2c::LoginDisconnectS2c;
     pub mod login_hello_c2s;
     pub use login_hello_c2s::LoginHelloC2s;
+    pub use login_hello_c2s::LoginHelloLegacyC2s;
     pub mod login_hello_s2c;
     pub use login_hello_s2c::LoginHelloS2c;
     pub mod login_key_c2s;

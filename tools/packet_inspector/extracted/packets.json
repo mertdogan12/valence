@@ -330,6 +330,12 @@
     "id": 0
   },
   {
+    "name": "LoginHelloLegacyC2SPacket",
+    "side": "serverbound",
+    "state": "login",
+    "id": 0
+  },
+  {
     "name": "LoginKeyC2SPacket",
     "side": "serverbound",
     "state": "login",
@@ -1050,3 +1056,4 @@
     "id": 4
   }
 ]
+

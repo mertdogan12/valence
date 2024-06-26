@@ -19,21 +19,22 @@ use tokio::net::{TcpListener, TcpStream};
 use tracing::{error, info, trace, warn};
 use uuid::Uuid;
 use valence_lang::keys;
+use valence_protocol::packets::login::LoginHelloLegacyC2s;
 use valence_protocol::profile::Property;
-use valence_protocol::Decode;
+use valence_protocol::{Decode, ProtocolVersion};
 use valence_server::client::Properties;
 use valence_server::protocol::packets::handshaking::handshake_c2s::HandshakeNextState;
 use valence_server::protocol::packets::handshaking::HandshakeC2s;
 use valence_server::protocol::packets::login::{
     LoginCompressionS2c, LoginDisconnectS2c, LoginHelloC2s, LoginHelloS2c, LoginKeyC2s,
-    LoginQueryRequestS2c, LoginQueryResponseC2s, LoginSuccessS2c,
+    LoginQueryRequestS2c, LoginQueryResponseC2s, LoginSuccessS2c
 };
 use valence_server::protocol::packets::status::{
     QueryPingC2s, QueryPongS2c, QueryRequestC2s, QueryResponseS2c,
 };
 use valence_server::protocol::{PacketDecoder, PacketEncoder, RawBytes, VarInt};
 use valence_server::text::{Color, IntoText};
-use valence_server::{ident, Text, MINECRAFT_VERSION, PROTOCOL_VERSION};
+use valence_server::{ident, Text, MINECRAFT_VERSION};
 
 use crate::legacy_ping::try_handle_legacy_ping;
 use crate::packet_io::PacketIo;
@@ -250,13 +251,13 @@ async fn handle_status(
 }
 
 /// Handle the login process and return the new client's data if successful.
-async fn handle_login(
+async fn handle_login_120(
     shared: &SharedNetworkState,
     io: &mut PacketIo,
     remote_addr: SocketAddr,
     handshake: HandshakeData,
 ) -> anyhow::Result<Option<(NewClientInfo, CleanupOnDrop)>> {
-    if handshake.protocol_version != PROTOCOL_VERSION {
+    if handshake.protocol_version != ProtocolVersion::get_version(handshake.protocol_version) {
         io.send_packet(&LoginDisconnectS2c {
             // TODO: use correct translation key.
             reason: format!("Mismatched Minecraft version (server is on {MINECRAFT_VERSION})")
@@ -271,6 +272,71 @@ async fn handle_login(
     let LoginHelloC2s {
         username,
         .. // TODO: profile_id
+    } = io.recv_packet().await?;
+
+    let username = username.0.to_owned();
+
+    let info = match shared.connection_mode() {
+        ConnectionMode::Online { .. } => login_online(shared, io, remote_addr, username).await?,
+        ConnectionMode::Offline => login_offline(remote_addr, username)?,
+        ConnectionMode::BungeeCord => {
+            login_bungeecord(remote_addr, &handshake.server_address, username)?
+        }
+        ConnectionMode::Velocity { secret } => login_velocity(io, username, secret).await?,
+    };
+
+    if shared.0.threshold.0 > 0 {
+        io.send_packet(&LoginCompressionS2c {
+            threshold: shared.0.threshold.0.into(),
+        })
+        .await?;
+
+        io.set_compression(shared.0.threshold);
+    }
+
+    let cleanup = match shared.0.callbacks.inner.login(shared, &info).await {
+        Ok(f) => CleanupOnDrop(Some(f)),
+        Err(reason) => {
+            info!("disconnect at login: \"{reason}\"");
+            io.send_packet(&LoginDisconnectS2c {
+                reason: reason.into(),
+            })
+            .await?;
+            return Ok(None);
+        }
+    };
+
+    io.send_packet(&LoginSuccessS2c {
+        uuid: info.uuid,
+        username: info.username.as_str().into(),
+        properties: Default::default(),
+    })
+    .await?;
+
+    Ok(Some((info, cleanup)))
+}
+
+/// Handle the login process and return the new client's data if successful.
+async fn handle_login(
+    shared: &SharedNetworkState,
+    io: &mut PacketIo,
+    remote_addr: SocketAddr,
+    handshake: HandshakeData,
+) -> anyhow::Result<Option<(NewClientInfo, CleanupOnDrop)>> {
+    if handshake.protocol_version != ProtocolVersion::get_version(handshake.protocol_version) {
+        io.send_packet(&LoginDisconnectS2c {
+            // TODO: use correct translation key.
+            reason: format!("Mismatched Minecraft version (server is on {MINECRAFT_VERSION})")
+                .color(Color::RED)
+                .into(),
+        })
+        .await?;
+
+        return Ok(None);
+    }
+
+    let LoginHelloLegacyC2s {
+        username
     } = io.recv_packet().await?;
 
     let username = username.0.to_owned();

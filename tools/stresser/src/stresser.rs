@@ -15,7 +15,7 @@ use valence_protocol::packets::play::{
 };
 use valence_protocol::var_int::VarInt;
 use valence_protocol::{
-    CompressionThreshold, Packet, PacketDecoder, PacketEncoder, PROTOCOL_VERSION,
+    CompressionThreshold, Packet, PacketDecoder, PacketEncoder, PROTOCOL_VERSIONS,
 };
 
 pub struct SessionParams<'a> {
@@ -48,7 +48,7 @@ pub async fn make_session<'a>(params: &SessionParams<'a>) -> anyhow::Result<()> 
     let server_addr_str = sock_addr.ip().to_string();
 
     let handshake_pkt = HandshakeC2s {
-        protocol_version: VarInt(PROTOCOL_VERSION),
+        protocol_version: VarInt(PROTOCOL_VERSIONS),
         server_address: server_addr_str.as_str().into(),
         server_port: sock_addr.port(),
         next_state: HandshakeNextState::Login,
