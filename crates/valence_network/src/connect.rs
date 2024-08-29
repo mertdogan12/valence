@@ -251,6 +251,7 @@ async fn handle_status(
 }
 
 /// Handle the login process and return the new client's data if successful.
+/// TODO reimpl.
 async fn handle_login_120(
     shared: &SharedNetworkState,
     io: &mut PacketIo,

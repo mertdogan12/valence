@@ -65,7 +65,8 @@ impl<T: Encode> Encode for [T] {
             std::any::type_name::<T>()
         );
 
-        VarInt(len as i32).encode(&mut w)?;
+        // TODO need an none legacy encode
+        (len as i16).encode(&mut w)?;
 
         T::encode_slice(self, w)
     }

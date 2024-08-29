@@ -16,10 +16,13 @@
     clippy::dbg_macro
 )]
 
+use std::io;
+
 use clap::Parser;
 use tracing::Level;
 use valence::app::App;
 use valence::log::LogPlugin;
+use valence::protocol::packets::login::LoginHelloS2c;
 
 #[allow(dead_code)]
 mod extras;
