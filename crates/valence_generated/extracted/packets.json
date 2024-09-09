@@ -1038,6 +1038,12 @@
     "id": 1
   },
   {
+    "name": "LoginHelloLegacyS2CPacket",
+    "side": "clientbound",
+    "state": "login",
+    "id": 1
+  },
+  {
     "name": "LoginSuccessS2CPacket",
     "side": "clientbound",
     "state": "login",

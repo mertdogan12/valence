@@ -4,7 +4,7 @@ use std::io;
 use std::net::SocketAddr;
 use std::time::Duration;
 
-use anyhow::{bail, ensure, Context};
+use anyhow::{bail, ensure, Context, Error};
 use base64::prelude::*;
 use hmac::digest::Update;
 use hmac::{Hmac, Mac};
@@ -19,6 +19,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tracing::{error, info, trace, warn};
 use uuid::Uuid;
 use valence_lang::keys;
+use valence_protocol::packets::login::login_hello_s2c::LoginHelloLegacyS2c;
 use valence_protocol::packets::login::LoginHelloLegacyC2s;
 use valence_protocol::profile::Property;
 use valence_protocol::{Decode, ProtocolVersion};
@@ -27,7 +28,7 @@ use valence_server::protocol::packets::handshaking::handshake_c2s::HandshakeNext
 use valence_server::protocol::packets::handshaking::HandshakeC2s;
 use valence_server::protocol::packets::login::{
     LoginCompressionS2c, LoginDisconnectS2c, LoginHelloC2s, LoginHelloS2c, LoginKeyC2s,
-    LoginQueryRequestS2c, LoginQueryResponseC2s, LoginSuccessS2c
+    LoginQueryRequestS2c, LoginQueryResponseC2s, LoginSuccessS2c,
 };
 use valence_server::protocol::packets::status::{
     QueryPingC2s, QueryPongS2c, QueryRequestC2s, QueryResponseS2c,
@@ -154,7 +155,7 @@ async fn handle_handshake(
             .await
             .context("handling status"),
         HandshakeNextState::Login => {
-            match handle_login(&shared, &mut io, remote_addr, handshake)
+            match handle_login_120(&shared, &mut io, remote_addr, handshake)
                 .await
                 .context("handling login")?
             {
@@ -251,7 +252,6 @@ async fn handle_status(
 }
 
 /// Handle the login process and return the new client's data if successful.
-/// TODO reimpl.
 async fn handle_login_120(
     shared: &SharedNetworkState,
     io: &mut PacketIo,
@@ -270,15 +270,37 @@ async fn handle_login_120(
         return Ok(None);
     }
 
-    let LoginHelloC2s {
-        username,
-        .. // TODO: profile_id
-    } = io.recv_packet().await?;
+    let username = match handshake.protocol_version {
+        763 => {
+            let LoginHelloC2s {
+                username,
+                .. // TODO: profile_id
+            } = io.recv_packet().await?;
 
-    let username = username.0.to_owned();
+            username.0.to_owned()
+        }
+        5 => {
+            let LoginHelloLegacyC2s { username } = io.recv_packet().await?;
+
+            username.0.to_owned()
+        }
+        _ => panic!(
+            "Unexpected protocol version: {}",
+            handshake.protocol_version
+        ),
+    };
 
     let info = match shared.connection_mode() {
-        ConnectionMode::Online { .. } => login_online(shared, io, remote_addr, username).await?,
+        ConnectionMode::Online { .. } => {
+            login_online(
+                shared,
+                io,
+                remote_addr,
+                username,
+                handshake.protocol_version,
+            )
+            .await?
+        }
         ConnectionMode::Offline => login_offline(remote_addr, username)?,
         ConnectionMode::BungeeCord => {
             login_bungeecord(remote_addr, &handshake.server_address, username)?
@@ -336,14 +358,21 @@ async fn handle_login(
         return Ok(None);
     }
 
-    let LoginHelloLegacyC2s {
-        username
-    } = io.recv_packet().await?;
+    let LoginHelloLegacyC2s { username } = io.recv_packet().await?;
 
     let username = username.0.to_owned();
 
     let info = match shared.connection_mode() {
-        ConnectionMode::Online { .. } => login_online(shared, io, remote_addr, username).await?,
+        ConnectionMode::Online { .. } => {
+            login_online(
+                shared,
+                io,
+                remote_addr,
+                username,
+                handshake.protocol_version,
+            )
+            .await?
+        }
         ConnectionMode::Offline => login_offline(remote_addr, username)?,
         ConnectionMode::BungeeCord => {
             login_bungeecord(remote_addr, &handshake.server_address, username)?
@@ -388,15 +417,29 @@ async fn login_online(
     io: &mut PacketIo,
     remote_addr: SocketAddr,
     username: String,
+    protocol_version: i32,
 ) -> anyhow::Result<NewClientInfo> {
     let my_verify_token: [u8; 16] = rand::random();
 
-    io.send_packet(&LoginHelloS2c {
-        server_id: "".into(), // Always empty
-        public_key: &shared.0.public_key_der,
-        verify_token: &my_verify_token,
-    })
-    .await?;
+    match protocol_version {
+        763 => {
+            io.send_packet(&LoginHelloS2c {
+                server_id: "".into(), // Always empty
+                public_key: &shared.0.public_key_der,
+                verify_token: &my_verify_token,
+            })
+            .await?;
+        }
+        5 => {
+            io.send_packet(&LoginHelloLegacyS2c {
+                server_id: "".into(), // Always empty
+                public_key: &shared.0.public_key_der,
+                verify_token: &my_verify_token,
+            })
+            .await?;
+        }
+        _ => panic!("Unexpected protocol version: {}", protocol_version),
+    };
 
     let LoginKeyC2s {
         shared_secret,

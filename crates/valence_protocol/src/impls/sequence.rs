@@ -65,7 +65,19 @@ impl<T: Encode> Encode for [T] {
             std::any::type_name::<T>()
         );
 
-        // TODO need an none legacy encode
+        VarInt(len as i32).encode(&mut w)?;
+
+        T::encode_slice(self, w)
+    }
+
+    fn legacy_encode(&self, mut w: impl Write) -> anyhow::Result<()> {
+        let len = self.len();
+        ensure!(
+            i32::try_from(len).is_ok(),
+            "length of {} slice exceeds i32::MAX (got {len})",
+            std::any::type_name::<T>()
+        );
+
         (len as i16).encode(&mut w)?;
 
         T::encode_slice(self, w)

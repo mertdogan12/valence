@@ -165,6 +165,18 @@ pub trait Encode {
     /// [`decode`]: Decode::decode
     fn encode(&self, w: impl Write) -> anyhow::Result<()>;
 
+    /// Writes this object to the provided writer.
+    ///
+    /// If this type also implements [`Decode`] then successful calls to this
+    /// function returning `Ok(())` must always successfully [`decode`] using
+    /// the data that was written to the writer. The exact number of bytes
+    /// that were originally written must be consumed during the decoding.
+    ///
+    /// [`decode`]: Decode::decode
+    fn legacy_encode(&self, w: impl Write) -> anyhow::Result<()> {
+        return self.encode(w);
+    }
+
     /// Like [`Encode::encode`], except that a whole slice of values is encoded.
     ///
     /// This method must be semantically equivalent to encoding every element of

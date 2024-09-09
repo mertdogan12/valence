@@ -12,7 +12,7 @@ mod decode;
 mod encode;
 mod packet;
 
-#[proc_macro_derive(Encode, attributes(packet))]
+#[proc_macro_derive(Encode, attributes(packet, encode))]
 pub fn derive_encode(item: StdTokenStream) -> StdTokenStream {
     match encode::derive_encode(item.into()) {
         Ok(tokens) => tokens.into(),

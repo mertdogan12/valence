@@ -1,12 +1,27 @@
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::quote;
 use syn::spanned::Spanned;
-use syn::{parse2, Data, DeriveInput, Error, Fields, LitInt, Result};
+use syn::{parse2, Data, DeriveInput, Error, Fields, LitBool, LitInt, Result};
 
 use crate::{add_trait_bounds, pair_variants_with_discriminants};
 
 pub(super) fn derive_encode(item: TokenStream) -> Result<TokenStream> {
     let mut input = parse2::<DeriveInput>(item)?;
+
+    let mut legacy = false;
+
+    // parse encode-legacy attr.
+    for attr in input.attrs {
+        if attr.path().is_ident("encode") {
+            attr.parse_nested_meta(|meta| {
+                if meta.path.is_ident("legacy") {
+                    legacy = meta.value()?.parse::<LitBool>()?.value;
+                }
+
+                Ok(())
+            })?;
+        }
+    }
 
     let input_name = input.ident;
 
@@ -26,8 +41,14 @@ pub(super) fn derive_encode(item: TokenStream) -> Result<TokenStream> {
                     .map(|f| {
                         let name = &f.ident.as_ref().unwrap();
                         let ctx = format!("failed to encode field `{name}` in `{input_name}`");
-                        quote! {
-                            self.#name.encode(&mut _w).context(#ctx)?;
+                        if legacy {
+                            quote! {
+                                self.#name.legacy_encode(&mut _w).context(#ctx)?;
+                            }
+                        } else {
+                            quote! {
+                                self.#name.encode(&mut _w).context(#ctx)?;
+                            }
                         }
                     })
                     .collect(),
@@ -35,8 +56,14 @@ pub(super) fn derive_encode(item: TokenStream) -> Result<TokenStream> {
                     .map(|i| {
                         let lit = LitInt::new(&i.to_string(), Span::call_site());
                         let ctx = format!("failed to encode field `{lit}` in `{input_name}`");
-                        quote! {
-                            self.#lit.encode(&mut _w).context(#ctx)?;
+                        if legacy {
+                            quote! {
+                                self.#lit.legacy_encode(&mut _w).context(#ctx)?;
+                            }
+                        } else {
+                            quote! {
+                                self.#lit.encode(&mut _w).context(#ctx)?;
+                            }
                         }
                     })
                     .collect(),
@@ -87,8 +114,14 @@ pub(super) fn derive_encode(item: TokenStream) -> Result<TokenStream> {
                                          `{variant_name}` in `{input_name}`",
                                     );
 
-                                    quote! {
-                                        #name.encode(&mut _w).context(#ctx)?;
+                                    if legacy {
+                                        quote! {
+                                            #name.legacy_encode(&mut _w).context(#ctx)?;
+                                        }
+                                    } else {
+                                        quote! {
+                                            #name.encode(&mut _w).context(#ctx)?;
+                                        }
                                     }
                                 })
                                 .collect::<TokenStream>();
@@ -115,8 +148,14 @@ pub(super) fn derive_encode(item: TokenStream) -> Result<TokenStream> {
                                          `{variant_name}` in `{input_name}`"
                                     );
 
-                                    quote! {
-                                        #name.encode(&mut _w).context(#ctx)?;
+                                    if legacy {
+                                        quote! {
+                                            #name.legacy_encode(&mut _w).context(#ctx)?;
+                                        }
+                                    } else {
+                                        quote! {
+                                            #name.encode(&mut _w).context(#ctx)?;
+                                        }
                                     }
                                 })
                                 .collect::<TokenStream>();
